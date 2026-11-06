@@ -1,0 +1,340 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1"><title>Session Protocol Flow</title><style>@import url("https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap");
+:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}
+/* Layout: a vertical spine of protocol stages, a travelling task marker, and a detail panel that follows it. */
+:root{
+  --bg:#f2f4f7; --panel:#ffffff; --fg:#17202b; --muted:#5b6774; --line:#cfd6df;
+  --accent:#2f5fd0; --accent-soft:#e2eafb;
+  --local:#0f766e; --local-soft:#d9f0ec;
+  --open:#b7791f; --open-soft:#fbeed2;
+  --frontier:#8a3ffc; --frontier-soft:#ece2fd;
+  --none:#6b7683; --none-soft:#e6eaef;
+  --warn:#b45309; --warn-soft:#fdebd0;
+  --ok:#15803d;
+  --display:"Bricolage Grotesque","Helvetica Neue",Arial,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f141a; --panel:#171e27; --fg:#e7ecf2; --muted:#9aa7b5; --line:#2b3542;
+    --accent:#7ea0ff; --accent-soft:#1d2a47;
+    --local:#3fc1b0; --local-soft:#113532;
+    --open:#e2b25a; --open-soft:#3a2d12;
+    --frontier:#b48cff; --frontier-soft:#2a1f47;
+    --none:#8d99a7; --none-soft:#232c37;
+    --warn:#f0a53a; --warn-soft:#3a2a12;
+    --ok:#4ade80; color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f141a; --panel:#171e27; --fg:#e7ecf2; --muted:#9aa7b5; --line:#2b3542;
+  --accent:#7ea0ff; --accent-soft:#1d2a47;
+  --local:#3fc1b0; --local-soft:#113532;
+  --open:#e2b25a; --open-soft:#3a2d12;
+  --frontier:#b48cff; --frontier-soft:#2a1f47;
+  --none:#8d99a7; --none-soft:#232c37;
+  --warn:#f0a53a; --warn-soft:#3a2a12;
+  --ok:#4ade80; color-scheme:dark;
+}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);line-height:1.5;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:24px 48px}
+.wrap{max-width:1100px;margin:0 auto}
+header h1{font-family:var(--display);font-weight:700;font-size:clamp(1.6rem,3.5vw,2.4rem);letter-spacing:-0.01em;margin:0 0 4px;text-wrap:balance}
+header p{margin:0;color:var(--muted);max-width:65ch}
+.controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:20px 0 8px}
+.controls .group{display:flex;gap:6px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:4px}
+button{font:inherit;font-weight:500;border:0;background:transparent;color:var(--fg);padding:6px 12px;border-radius:999px;cursor:pointer}
+button:hover{background:var(--accent-soft)}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button[aria-pressed="true"]{background:var(--accent);color:#fff}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:.85rem;color:var(--muted);margin-left:auto}
+.legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:middle}
+.legend .l-none::before{background:var(--none)} .legend .l-local::before{background:var(--local)} .legend .l-open::before{background:var(--open)} .legend .l-frontier::before{background:var(--frontier)}
+
+.layout{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:24px;margin-top:12px}
+@media (max-width:820px){.layout{grid-template-columns:1fr}}
+
+.flow{position:relative;padding-left:44px;min-width:0}
+.spine{position:absolute;left:19px;top:14px;bottom:14px;width:2px;background:var(--line)}
+.marker{position:absolute;left:12px;top:0;width:16px;height:16px;border-radius:50%;background:var(--accent);
+  box-shadow:0 0 0 4px var(--accent-soft);transition:top .7s cubic-bezier(.4,0,.2,1);z-index:2}
+.stage{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:0 0 10px;min-width:0;
+  transition:border-color .3s,transform .3s,opacity .3s;opacity:.78}
+.stage::before{content:"";position:absolute;left:-30px;top:20px;width:10px;height:10px;border-radius:50%;background:var(--line);border:2px solid var(--bg)}
+.stage.active{border-color:var(--accent);opacity:1;transform:translateX(4px)}
+.stage.active::before{background:var(--accent)}
+.stage.done{opacity:.95}
+.stage.done::before{background:var(--ok)}
+.stage.optional{border-style:dashed}
+.stage.optional:not(.active):not(.done){opacity:.55}
+.stage .row{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.stage h3{font-family:var(--display);font-weight:700;font-size:1.05rem;margin:0}
+.stage .lesson{font-family:var(--mono);font-size:.72rem;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.stage .model{margin-left:auto;font-family:var(--mono);font-size:.72rem;padding:2px 8px;border-radius:999px}
+.model.none{background:var(--none-soft);color:var(--none)} .model.local{background:var(--local-soft);color:var(--local)} .model.open{background:var(--open-soft);color:var(--open)} .model.frontier{background:var(--frontier-soft);color:var(--frontier)}
+.stage p{margin:4px 0 0;color:var(--muted);font-size:.92rem}
+
+.detail{position:sticky;top:16px;align-self:start;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 20px;min-width:0}
+.detail .eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--accent)}
+.detail h2{font-family:var(--display);font-weight:700;font-size:1.5rem;margin:4px 0 10px;text-wrap:balance}
+.detail dl{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:0;font-size:.95rem}
+.detail dt{color:var(--muted);font-family:var(--mono);font-size:.78rem;padding-top:3px}
+.detail dd{margin:0}
+.detail .finding{border-left:3px solid var(--accent);padding-left:12px;color:var(--muted);font-size:.9rem;margin-top:14px}
+.detail .benefit{background:var(--accent-soft);border-radius:10px;padding:10px 12px;margin-top:14px;font-weight:500}
+.detail .benefit strong{color:var(--accent)}
+.outcome{margin-top:14px;font-family:var(--mono);font-size:.8rem;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap}
+.outcome span{padding:2px 8px;border-radius:999px;border:1px solid var(--line)}
+.outcome .lit{border-color:var(--ok);color:var(--ok)}
+.outcome .warn{border-color:var(--warn);color:var(--warn)}
+.terms{margin-top:22px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 20px}
+.terms h2{font-family:var(--display);font-weight:700;font-size:1.15rem;margin:0 0 8px}
+.terms dl{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:0;font-size:.92rem}
+.terms dt{font-family:var(--mono);font-size:.8rem;color:var(--accent);padding-top:3px}
+.terms dd{margin:0}
+@media (max-width:820px){.terms dl{grid-template-columns:1fr;gap:2px}.terms dd{margin-bottom:6px}}
+.footnote{margin-top:22px;color:var(--muted);font-size:.85rem;max-width:70ch}
+@media (prefers-reduced-motion: reduce){.marker,.stage{transition:none}}
+
+.detail code{font-family:var(--mono);font-size:.86em;background:var(--none-soft);padding:1px 4px;border-radius:4px;overflow-wrap:anywhere}
+/* Embed layout: in a narrow column the stages become a chip strip above the detail panel, so the moving part stays in view. */
+@media (max-width:820px){
+  body{padding-block:12px 16px}
+  header p,.legend{display:none}
+  .controls{margin:10px 0 4px}
+  .layout{display:flex;flex-direction:column;gap:12px;margin-top:4px}
+  .flow{order:-1;display:flex;gap:6px;overflow-x:auto;padding:4px 2px 8px;scrollbar-width:thin}
+  .spine,.marker,.stage p,.stage .lesson,.stage .model,.stage::before{display:none}
+  .stage{flex:none;margin:0;padding:6px 12px;border-radius:999px;opacity:.85}
+  .stage.optional:not(.active):not(.done){opacity:.7}
+  .stage.active{transform:none;background:var(--accent-soft)}
+  .stage.done{border-color:var(--ok)}
+  .stage h3{font-size:.9rem}
+  .detail{position:static;padding:14px 16px}
+  .detail dl{grid-template-columns:1fr;gap:2px}
+  .detail dd{margin-bottom:6px}
+}
+</style></head><body><div class="wrap">
+<header>
+  <h1>Session Protocol Flow</h1>
+  <p>Ten lessons from forty years of psilocybin research, applied to an agent harness. Follow one task from the moment it arrives to the weekly report. Click any stage to stop on it. The panel explains in plain words what happens there, whether an AI model is involved, what already exists in the author's tools, the research finding it borrows from, and why it helps.</p>
+</header>
+
+<div class="controls">
+  <div class="group" role="group" aria-label="Scenario">
+    <button id="scn-clean" aria-pressed="true">Clean run</button>
+    <button id="scn-fail" aria-pressed="false">Failing verify</button>
+  </div>
+  <div class="group" role="group" aria-label="Playback">
+    <button id="play" aria-pressed="true">Pause</button>
+    <button id="step">Step</button>
+    <button id="restart">Restart</button>
+  </div>
+  <div class="legend"><span class="l-none">no model</span><span class="l-local">small local (gemma4:4b)</span><span class="l-frontier">capable: open-weight or frontier (DeepSeek v4.1 Flash, Claude)</span></div>
+</div>
+
+<div class="layout">
+  <section class="flow" id="flow" aria-label="Protocol stages">
+    <div class="spine"></div>
+    <div class="marker" id="marker" aria-hidden="true"></div>
+  </section>
+
+  <aside class="detail" id="detail" aria-live="polite">
+    <div class="eyebrow" id="d-eyebrow">Stage</div>
+    <h2 id="d-title">Intake</h2>
+    <dl>
+      <dt>what happens</dt><dd id="d-does"></dd>
+      <dt>which AI</dt><dd id="d-model"></dd>
+      <dt>already built</dt><dd id="d-exists"></dd>
+    </dl>
+    <div class="finding" id="d-finding"></div>
+    <div class="benefit" id="d-benefit"></div>
+    <div class="outcome" id="d-outcome"></div>
+  </aside>
+</div>
+
+<section class="terms" aria-label="Names used on this page">
+  <h2>Names used here</h2>
+  <dl>
+    <dt>Hermes</dt><dd>An open-source personal AI agent from Nous Research that runs in chat apps and the terminal, and on a schedule. It is the always-on base the rest sits on.</dd>
+    <dt>ai-os</dt><dd>Author's thin personal layer on top of Hermes: a daily project board, an idea inbox, a ledger that logs every task, and a queue for coding jobs.</dd>
+    <dt>AEGIS</dt><dd>The assistant the author runs locally on small models, with the harness around it: the code that decides what a model can do and checks what it claims. ai-os borrows its guard, ledger and completion-gate patterns.</dd>
+    <dt>Claim-gate</dt><dd>A small checker that reads an agent's answer before the turn ends. If a claim has no tool call behind it, the agent is sent back once to check. No model does the judging.</dd>
+  </dl>
+</section>
+
+<p class="footnote">Lesson numbers follow the ten lessons in the research note of 2026-10-26; every one of them appears in at least one stage. The dose figures come from Griffiths and colleagues, 2011, who tested 0, 5, 10, 20 and 30 mg per 70 kg in 18 volunteers: complete mystical experience 0, 5.6, 11.1, 44.4, 55.6%; extreme fear in 0, 0, 0, 1 and 6 volunteers. Every link here is an analogy, and the research is about people, not language models. Figures were checked against the papers on 2026-11-05. The protocol copies the shape of the clinical method, not the drug.</p>
+</div><script>const STAGES = [
+ {id:"intake", name:"Intake", lesson:"Lesson 10", model:"none",
+  short:"A task shows up from the board, a Telegram reply, or a scheduled job. Before anything else, two 'stop' files are checked.",
+  does:"Take the task in. Look for two plain files on disk, `~/.hermes/ESTOP` and `~/.ai-os/PAUSE`. If either exists, do nothing. Otherwise add a row to the ledger (the log of every task) marked `pending`.",
+  modelText:"No AI at all. A file check and one line written to a log. Anything that plain code can do, plain code should do: it is predictable and free.",
+  exists:"ai-os already has the PAUSE check. Hermes already honours ESTOP in its scheduler, kanban board and chat gateway.",
+  finding:"The Harvard psilocybin project of the early 1960s fell apart over governance. The team gave doses outside what was agreed, and Alpert kept some of the supply after being told to hand it over. Roland Griffiths later said Leary played a very significant role in the backlash that, with regulation and politics, shut clinical research down for decades.",
+  benefit:"<strong>The off switch always works, and nothing runs in secret.</strong> A paused system does nothing, and every task is logged from its first second. You never have to wonder what it did while you were away."},
+ {id:"prepare", name:"Prepare", lesson:"Lesson 3", model:"local",
+  short:"Gather the project's history and spell out the allowed endings: done, parked, or 'I need a decision from you'.",
+  does:"Pull together the project's recent commits, notes, past ledger rows and any saved hints. Ask a small local model one question: what kind of task is this? Then write a short 'outcome contract' listing which endings count as success.",
+  modelText:"A small local model (gemma4:4b on Ollama), used only to classify the task type. Gathering the history is ordinary code with no model.",
+  exists:"ai-os has the collector, which gathers history, and the registry hints. 'Parked' and 'needs a decision' are already valid outcomes. AEGIS already sends small jobs to small models.",
+  finding:"In the first Johns Hopkins study, an eight-hour session sat between eight hours of meetings before it and four after. Those meetings built trust and went over the person's life. The same paper found no evidence that preparing beyond the first session helped further.",
+  benefit:"<strong>The worker never starts blind.</strong> It knows what was tried before, and it knows that stopping is a legitimate answer. That removes the pressure to fake a finished result."},
+ {id:"dose", name:"Dose", lesson:"Lessons 1 and 2", model:"none",
+  short:"How much freedom does this project get? A per-project 'rung' decides how big a step is allowed and which model may be used.",
+  does:"Look up the project's rung: 0 means only suggest, 1 means one small change, 2 means changes across several files, 3 means run unattended. The rung sets a step budget, a time budget, and the most powerful model allowed. A project's ledger record moves it up or down one rung, but reaching rung 3 also needs the author's sign-off.",
+  modelText:"No AI. A lookup in a small table.",
+  exists:"ai-os already limits itself to one proactive item a day and only unlocks its top tier after a month of verified runs. This stage makes that limit per project, so it can move up or down.",
+  finding:"Raising the dose from 20 mg to 30 mg lifted complete mystical experiences from 44% to 56% of 18 volunteers, while extreme fear went from 1 person to 6. With weaker supervision, the authors advised against going above about 20 mg. People given doses in increasing order did better at one month, and on some measures at 14 months.",
+  benefit:"<strong>Autonomy is earned one step at a time.</strong> Each project runs at the point where more freedom would cost more than it gives, instead of at the maximum the tools happen to allow."},
+ {id:"run", name:"Run", lesson:"Lesson 5", model:"frontier",
+  short:"The worker does the job. Health readings are written on a timer, not whenever the model feels like reporting.",
+  does:"Carry out the task within its budget. Every few minutes, plain code records a 'vitals' row: tokens used, tool calls made, files touched, and minutes since the tests last passed.",
+  modelText:"A capable model does the work. Open-weight and frontier models are treated as one class, on the premise that open-weight models are catching up fast; the cheaper one is the default. In the benchmark arms A and B use Claude and arm C uses DeepSeek v4.1 Flash, which is how that premise gets tested. Small local models never do this job.",
+  exists:"Hermes already lets you watch and interrupt a running job. ai-os already has budgets for coder tasks. The vitals rows are the new part.",
+  finding:"Monitors took blood pressure and heart rate at set times during the session, and rated the person's behaviour and mood at the same times.",
+  benefit:"<strong>A stuck run looks different from a thinking run.</strong> Two identical vitals rows in a row mean nothing is happening. The earlier Hermes coding hangs gave no such signal."},
+ {id:"guard", name:"Guard", lesson:"Lesson 6", model:"none",
+  short:"Some moves are simply blocked. Facing a failure is made the easy path.",
+  does:"Refuse a fixed list of 'escape' moves: deleting or skipping a test that passes, committing with `--no-verify`, force-pushing, widening permissions. After a failed test run, demand that the failing case be written to the ledger before any more edits.",
+  modelText:"No AI. A fixed list of banned actions and a hook that checks every tool call against it.",
+  exists:"ai-os has a guard hook and a security stage. AEGIS blocks destructive actions. The specific list of escape moves is new.",
+  finding:"Hopkins guidelines say anxious participants should be reminded to surrender to the experience, and warn that talking them out of it can backfire. This is the loosest link here: the clinic coaches and a harness blocks. Only the direction is borrowed, toward the difficulty.",
+  benefit:"<strong>A failure becomes information instead of disappearing.</strong> The run cannot make a red test go away, so every failure leaves a record the next stage can use."},
+ {id:"judge", name:"Judge", lesson:"Lesson 4", model:"none",
+  short:"The harness decides pass or fail, never the model that did the work. The answer comes from a fixed list.",
+  does:"Run the project's verify command (tests, lint) and the security checks. Write exactly one verdict: `verified`, `unverified-claim`, `failed`, `budget-exhausted`, or `needs-input`.",
+  modelText:"No AI wherever possible. If a judgement call cannot be avoided, use a different local model from the one that did the work.",
+  exists:"AEGIS rule: models never report their own success. The ai-os ledger already uses these verdicts. Claim-gate, now running in Claude Code and Hermes, checks individual claims in the model's replies.",
+  finding:"Timothy Leary and Richard Alpert took the drug during their own experiments. Hopkins kept two sober monitors in the room, and one or both of them still misclassified 23% of sessions against an active comparison drug.",
+  benefit:"<strong>No marking your own homework.</strong> The model that ran does not grade itself, and neither does a person's impression. The ledger is the official score."},
+ {id:"ground", name:"Ground", lesson:"Lesson 5", model:"frontier", optional:true,
+  short:"Only after a failure. Remind the worker what the job was and what broke, then let it try once more.",
+  does:"Send the same worker a short message: here is the goal you agreed to, here is the test command, here is the exact failing case. Allow one retry.",
+  modelText:"The same worker model that just failed. The reminder pulls it back to the task instead of letting it wander further down a wrong path.",
+  exists:"New. The investigation into Hermes coding hangs showed this was the missing step.",
+  finding:"In 54 high-dose volunteers at Hopkins, reassurance settled every case of acute distress: calm presence, a supportive touch, and reminders of where the person was and what they had taken. A sedative was kept ready and never needed.",
+  benefit:"<strong>Reassure before you reach for something stronger.</strong> A reminder costs far less than aborting or calling a bigger model. How often it works is what the benchmark has to measure."},
+ {id:"escalate", name:"Escalate", lesson:"Lessons 1 and 4", model:"frontier", optional:true,
+  short:"Only after a second failure, and only at rung 2 or higher. A second, stronger capable model gets one attempt. The judge stays exactly as it was.",
+  does:"Hand the goal, the history and the failing case to a second capable model for a single attempt. Log the escalation in the ledger as a sign that the task was hard.",
+  modelText:"A second capable model, normally the more expensive one, for the attempt only. It never writes the verdict. Not used in the round-one benchmark, so the comparison between the two capable models stays clean.",
+  exists:"AEGIS already has an optional frontier tier. Escalating only on failure, and counting each time it happens, is new.",
+  finding:"Dose has a sweet spot. Escalation is a dose too. A frontier model grading its own work would be the researcher taking the drug.",
+  benefit:"<strong>Hybrid without self-grading.</strong> The expensive model is used only where the cheap one has clearly failed, and every use is counted, so you can see and tune how often it happens."},
+ {id:"integrate", name:"Integrate", lesson:"Lesson 3", model:"local",
+  short:"Write down one thing the run taught, in a place tomorrow's run will read. Keep an undo number.",
+  does:"From the ledger and the code diff, draft one small note: a hint about the project, or a section in `knowledge.md`. Commit it to the ai-os home folder with a reason. `revert N` undoes it.",
+  modelText:"An optional small local model (gemma4:4b) to write the summary. The commit itself is plain code and can be undone.",
+  exists:"ai-os tier 1 already writes these files with revert numbers. AEGIS has a loop from events to patterns to proposals. Doing it after every run is new.",
+  finding:"Ram Dass said psychedelics show you a possibility, and after a few hours you have it only as a memory. In a 2018 study everyone took up meditation and spiritual practice. High doses produced large changes that outside observers also rated, and extra support for the practice added to them.",
+  benefit:"<strong>A good moment becomes a lasting habit.</strong> What this run learned is written where the next run's Prepare stage reads it, so the local model gets a little better each day."},
+ {id:"observe", name:"Observe", lesson:"Lessons 7 and 8", model:"none",
+  short:"Two weeks later, look at the repository to see whether anything stuck. Ask four short questions instead of one.",
+  does:"On day 14, check the project for new commits, a mention in a daily note, or a new coder task. Write `persisted: true` or `false` on the item. Ask the author to score the item on fit, insight, relief, and whether it lasted.",
+  modelText:"No AI. Git log and file checks.",
+  exists:"ai-os `feedback.jsonl` records good, skip or more. The collector counts quiet days. The persistence flag and the four questions are new.",
+  finding:"The character of the session on the day tracked how meaningful people rated it 14 months later (correlations .65 to .77, 36 people). Accounting for how intense it was changed little. Friends, family and colleagues rated changes in behaviour in separate phone interviews.",
+  benefit:"<strong>Behaviour is the judge, not opinion.</strong> Whether the board changed the author's week is measured by what the author did next, not by what they or the model said about it."},
+ {id:"report", name:"Report", lesson:"Lessons 1, 9 and 10", model:"none",
+  short:"Once a week: a chart of benefit against distress, a 'do nothing' baseline to compare against, and a count of bad days.",
+  does:"For each project, plot verified runs against distress signals by task size. Compare each proposed change against a paired change that does nothing. Count the days the board was wrong, late or missing.",
+  modelText:"No AI. Counting over the ledger and the proactive history.",
+  exists:"ai-os weekly proposals and a canary check. AEGIS benchmark comparisons. The do-nothing baseline and the incident count are new.",
+  finding:"A 1962 trial used niacin as an active placebo, but its flush faded in about an hour while the drug's effects grew. Hopkins used methylphenidate, and monitors still misclassified 23% of sessions. A control has to be plausible, and even a good one leaks.",
+  benefit:"<strong>Tune on evidence, not on feel.</strong> Rungs move when the chart says so. A change smaller than the noise is called 'no effect'. A week with any incident gets attention before any new feature."}
+];
+
+const CLEAN = ["intake","prepare","dose","run","guard","judge","integrate","observe","report"];
+const FAIL  = ["intake","prepare","dose","run","guard","judge","ground","judge","escalate","judge","integrate","observe","report"];
+const VERDICT = {clean:{judge:["verified"]}, fail:{judge:["failed","failed","verified"]}};
+
+const flow = document.getElementById("flow");
+const marker = document.getElementById("marker");
+const byId = {};
+for (const s of STAGES){
+  const el = document.createElement("article");
+  el.className = "stage" + (s.optional ? " optional" : "");
+  el.id = "stage-" + s.id;
+  el.innerHTML = `<div class="row"><h3>${s.name}</h3><span class="lesson">${s.lesson}</span><span class="model ${s.model}">${s.model === "none" ? "no model" : s.model}</span></div><p>${s.short}</p>`;
+  el.tabIndex = 0;
+  el.addEventListener("click", () => { pause(); showStage(s.id, true); });
+  el.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pause(); showStage(s.id, true); } });
+  flow.appendChild(el);
+  byId[s.id] = s;
+}
+
+let scenario = "clean", seq = CLEAN, idx = 0, playing = true, timer = null, judgeCount = 0;
+const DWELL = 3200;
+
+function moveMarker(id){
+  const el = document.getElementById("stage-" + id);
+  marker.style.top = (el.offsetTop + 14) + "px";
+}
+function withCode(text){ return text.replace(/`([^`]+)`/g, "<code>$1</code>"); }
+function keepChipInView(el){
+  if (flow.scrollWidth <= flow.clientWidth) return;
+  flow.scrollTo({left: el.offsetLeft - (flow.clientWidth - el.offsetWidth) / 2, behavior: "smooth"});
+}
+function showStage(id, manual){
+  const s = byId[id];
+  document.querySelectorAll(".stage").forEach(e => e.classList.remove("active"));
+  const el = document.getElementById("stage-" + id);
+  el.classList.add("active");
+  moveMarker(id);
+  keepChipInView(el);
+  document.getElementById("d-eyebrow").textContent = s.lesson;
+  document.getElementById("d-title").textContent = s.name;
+  document.getElementById("d-does").innerHTML = withCode(s.does);
+  document.getElementById("d-model").textContent = s.modelText;
+  document.getElementById("d-exists").innerHTML = withCode(s.exists);
+  document.getElementById("d-finding").textContent = s.finding;
+  document.getElementById("d-benefit").innerHTML = s.benefit;
+  const out = document.getElementById("d-outcome");
+  out.innerHTML = "";
+  if (id === "judge" && !manual){
+    const v = VERDICT[scenario].judge[Math.min(judgeCount, VERDICT[scenario].judge.length - 1)];
+    for (const name of ["verified","failed","unverified-claim","budget-exhausted","needs-input"]){
+      const sp = document.createElement("span"); sp.textContent = name;
+      if (name === v) sp.className = v === "verified" ? "lit" : "warn";
+      out.appendChild(sp);
+    }
+  } else if (id === "escalate"){
+    out.innerHTML = '<span class="warn">distress +1</span><span>frontier attempts 1</span>';
+  } else if (id === "observe"){
+    out.innerHTML = '<span class="lit">persisted: true</span><span>fit 3 · insight 2 · relief 3</span>';
+  } else if (id === "dose"){
+    out.innerHTML = scenario === "clean" ? '<span class="lit">rung 1 → local only</span>' : '<span class="warn">rung 2 → local, frontier on 2nd fail</span>';
+  }
+}
+function markDone(upto){
+  document.querySelectorAll(".stage").forEach(e => e.classList.remove("done"));
+  for (let i = 0; i < upto; i++) document.getElementById("stage-" + seq[i]).classList.add("done");
+}
+function tick(){
+  if (idx >= seq.length){ idx = 0; judgeCount = 0; }
+  const id = seq[idx];
+  if (id === "judge" && idx > 0 && seq[idx-1] !== "guard") judgeCount++;
+  if (id === "judge" && seq[idx-1] === "guard") judgeCount = 0;
+  markDone(idx);
+  showStage(id, false);
+  idx++;
+}
+function schedule(){ clearTimeout(timer); if (playing) timer = setTimeout(() => { tick(); schedule(); }, DWELL); }
+function pause(){ playing = false; clearTimeout(timer); document.getElementById("play").textContent = "Play"; document.getElementById("play").setAttribute("aria-pressed","false"); }
+function play(){ playing = true; document.getElementById("play").textContent = "Pause"; document.getElementById("play").setAttribute("aria-pressed","true"); schedule(); }
+
+document.getElementById("play").addEventListener("click", () => playing ? pause() : play());
+document.getElementById("step").addEventListener("click", () => { pause(); tick(); });
+document.getElementById("restart").addEventListener("click", () => { idx = 0; judgeCount = 0; tick(); schedule(); });
+function setScenario(name){
+  scenario = name; seq = name === "clean" ? CLEAN : FAIL; idx = 0; judgeCount = 0;
+  document.getElementById("scn-clean").setAttribute("aria-pressed", String(name === "clean"));
+  document.getElementById("scn-fail").setAttribute("aria-pressed", String(name === "fail"));
+  tick(); schedule();
+}
+document.getElementById("scn-clean").addEventListener("click", () => setScenario("clean"));
+document.getElementById("scn-fail").addEventListener("click", () => setScenario("fail"));
+window.addEventListener("resize", () => { const act = document.querySelector(".stage.active"); if (act) moveMarker(act.id.replace("stage-","")); });
+
+tick(); schedule();
+</script></body></html>
